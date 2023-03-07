@@ -1,0 +1,15 @@
+C:\Users\oriol\source\repos\chatApp\chatServer\bin\Debug\net6.0\chatServer.exe
+C:\Users\oriol\source\repos\chatApp\chatServer\bin\Debug\net6.0\chatServer.deps.json
+C:\Users\oriol\source\repos\chatApp\chatServer\bin\Debug\net6.0\chatServer.runtimeconfig.json
+C:\Users\oriol\source\repos\chatApp\chatServer\bin\Debug\net6.0\chatServer.dll
+C:\Users\oriol\source\repos\chatApp\chatServer\bin\Debug\net6.0\chatServer.pdb
+C:\Users\oriol\source\repos\chatApp\chatServer\obj\Debug\net6.0\chatServer.csproj.AssemblyReference.cache
+C:\Users\oriol\source\repos\chatApp\chatServer\obj\Debug\net6.0\chatServer.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\oriol\source\repos\chatApp\chatServer\obj\Debug\net6.0\chatServer.AssemblyInfoInputs.cache
+C:\Users\oriol\source\repos\chatApp\chatServer\obj\Debug\net6.0\chatServer.AssemblyInfo.cs
+C:\Users\oriol\source\repos\chatApp\chatServer\obj\Debug\net6.0\chatServer.csproj.CoreCompileInputs.cache
+C:\Users\oriol\source\repos\chatApp\chatServer\obj\Debug\net6.0\chatServer.dll
+C:\Users\oriol\source\repos\chatApp\chatServer\obj\Debug\net6.0\refint\chatServer.dll
+C:\Users\oriol\source\repos\chatApp\chatServer\obj\Debug\net6.0\chatServer.pdb
+C:\Users\oriol\source\repos\chatApp\chatServer\obj\Debug\net6.0\chatServer.genruntimeconfig.cache
+C:\Users\oriol\source\repos\chatApp\chatServer\obj\Debug\net6.0\ref\chatServer.dll
