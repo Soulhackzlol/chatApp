@@ -1,8 +1,7 @@
-﻿using System;
+﻿
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
-using System.Collections.Generic;
 using System.Text;
 
 namespace chatServer
@@ -12,121 +11,182 @@ namespace chatServer
         static void Main(string[] args)
         {
             Server server = new Server();
-
             Console.ReadLine();
+            server.Stop();
         }
     }
 
     public class Server
     {
         private TcpListener listener;
-        private Thread listenerThread;
-        private List<TcpClient> clients;
+        private ConcurrentBag<TcpClient> clients;
+        private ConcurrentDictionary<TcpClient, DateTime> clientLastHeartbeat;
         private Timer heartbeatTimer;
+        private bool isRunning = true;
+        private object lockObj = new object();
+        private SemaphoreSlim heartbeatSemaphore = new SemaphoreSlim(1, 1);
 
         public Server()
         {
-            this.clients = new List<TcpClient>();
+            this.clients = new ConcurrentBag<TcpClient>();
+            this.clientLastHeartbeat = new ConcurrentDictionary<TcpClient, DateTime>();
             this.listener = new TcpListener(IPAddress.Any, 8000);
-            this.listenerThread = new Thread(new ThreadStart(ListenForClients));
-            this.listenerThread.Start();
-
-            // To start the timer with the asynchronous method:
-            this.heartbeatTimer = new Timer(async state => await SendHeartbeatAsync(state), null, 0, 30000);
+            // Send heartbeat every 30 seconds and check for replies
+            this.heartbeatTimer = new Timer(async state => await SafeSendHeartbeatAsync(), null, 0, 10000);
+            this.StartListening();
+        }
+        private async Task SafeSendHeartbeatAsync()
+        {
+            if (await heartbeatSemaphore.WaitAsync(0))  // Try to acquire the semaphore without waiting
+            {
+                try
+                {
+                    await SendHeartbeatAsync();
+                  
+                    await CheckHeartbeats();  // Check for heartbeat responses after the delay
+                }
+                finally
+                {
+                    heartbeatSemaphore.Release();
+                }
+            }
+            else
+            {
+                Console.WriteLine("[ WARNING ] Previous heartbeat still in progress.");
+            }
         }
 
-        private async Task SendHeartbeatAsync(object state)
+
+        private async Task SendHeartbeatAsync()
         {
-            if (this.clients.Count > 0)
+            byte[] heartbeat = Encoding.ASCII.GetBytes("heartbeat");
+            List<Task> tasks = new List<Task>();
+
+            foreach (var client in clients)
             {
-                for (int i = this.clients.Count - 1; i >= 0; i--)
+                tasks.Add(SendHeartbeatToClientAsync(client, heartbeat));
+            }
+
+            await Task.WhenAll(tasks);
+        }
+
+        private async Task SendHeartbeatToClientAsync(TcpClient client, byte[] heartbeat)
+        {
+            try
+            {
+                NetworkStream clientStream = client.GetStream();
+                await clientStream.WriteAsync(heartbeat, 0, heartbeat.Length);
+                string clientIP = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
+                Console.WriteLine($"[ HEARTBEAT SENT | {clientIP} ]");
+            }
+            catch
+            {
+                HandleClientDisconnection(client);
+            }
+        }
+
+        private async Task CheckHeartbeats()
+        {
+            DateTime now = DateTime.Now;
+
+            var currentClients = clients.ToArray(); // Take a snapshot
+            foreach (var client in currentClients)
+            {
+                if (!clientLastHeartbeat.TryGetValue(client, out DateTime lastHeartbeat))
                 {
-                    TcpClient client = this.clients[i];
-                    NetworkStream clientStream = client.GetStream();
+                    Console.WriteLine($"[ DEBUG | {((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString()} ] Client does not have a recorded last heartbeat.");
+                    HandleClientDisconnection(client);
+                    continue;
+                }
 
-                    try
-                    {
-                        // Send heartbeat message
-                        byte[] heartbeat = Encoding.ASCII.GetBytes("heartbeat");
-                        clientStream.Write(heartbeat, 0, heartbeat.Length);
+                double secondsSinceLastHeartbeat = (now - lastHeartbeat).TotalSeconds;
+                string clientIP = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
+                Console.WriteLine($"[ DEBUG | {clientIP} ] Seconds since last heartbeat: {secondsSinceLastHeartbeat}");
 
-                        Console.WriteLine("[ HEARTBEAT ] sent to client {0}", i);
-
-                        // Receive heartbeat reply
-                        byte[] reply = new byte[4096];
-                        int bytesRead = await clientStream.ReadAsync(reply, 0, 4096);
-                        string data = Encoding.ASCII.GetString(reply, 0, bytesRead);
-
-                        if (data.Length == 0)
-                        {
-                            // Remove unreachable client
-                            string clientIP = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
-                            Console.ForegroundColor = ConsoleColor.Red;
-                            Console.WriteLine("[ DISCONNECT | {0} ] Client unreachable", clientIP);
-                            Console.ResetColor();
-                            this.clients.RemoveAt(i);
-                        }
-
-                        if (data == "HEARTBEAT-REPLY")
-                        {
-                            string clientIP = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
-                            Console.ForegroundColor = ConsoleColor.Magenta;
-                            Console.WriteLine("[ VERIFIED | {0} ] Client Replied!", clientIP);
-                            Console.ResetColor();
-                        }
-
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                        // Remove disconnected client
-                        string clientIP = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine("[ DISCONNECT | {0} ] Client disconnected", clientIP);
-                        Console.ResetColor();
-                        this.clients.RemoveAt(i);
-                    }
-                    catch (IOException)
-                    {
-                        // Remove disconnected client
-                        string clientIP = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine("[ DISCONNECT | {0} ] Client disconnected", clientIP);
-                        Console.ResetColor();
-                        this.clients.RemoveAt(i);
-                    }
-                    catch (ArgumentOutOfRangeException)
-                    {
-
-                    }
+                if (secondsSinceLastHeartbeat > 11)
+                {
+                    Console.WriteLine($"[ DEBUG | {clientIP} ] Disconnecting client due to missed heartbeat.");
+                    HandleClientDisconnection(client);
                 }
             }
         }
 
-        private void ListenForClients()
+        private void HandleClientDisconnection(TcpClient client)
+        {
+            if (client == null) return;
+
+            // Attempt to remove the client from the list
+            bool clientRemoved = false;
+            while (!clientRemoved)
+            {
+                if (clients.TryTake(out TcpClient removedClient))
+                {
+                    if (client == removedClient)
+                    {
+                        clientRemoved = true;
+                    }
+                    else
+                    {
+                        // This wasn't the client we intended to remove, so add it back
+                        clients.Add(removedClient);
+                    }
+                }
+                else
+                {
+                    // Couldn't remove any client, break out of the loop
+                    break;
+                }
+            }
+
+            clientLastHeartbeat.TryRemove(client, out _);
+
+            if (client.Client != null && client.Client.RemoteEndPoint != null)
+            {
+                string clientIP = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[ DISCONNECT | {clientIP} ] Client disconnected");
+                Console.ResetColor();
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("[ DISCONNECT ] Client disconnected");
+                Console.ResetColor();
+            }
+        }
+
+
+
+
+        private void StartListening()
         {
             this.listener.Start();
-            Console.WriteLine("Chat Server made by s1");
-            Console.WriteLine();
-            Console.WriteLine("Chat server started on port 8000");
-
-            while (true)
+            Console.WriteLine("Chat Server started on port 8000");
+            while (isRunning)
             {
-                TcpClient client = null;
-
                 try
                 {
-                    client = this.listener.AcceptTcpClient();
+                    TcpClient client = this.listener.AcceptTcpClient();
                     this.clients.Add(client);
-
-                    Thread clientThread = new Thread(new ParameterizedThreadStart(HandleClient));
-                    clientThread.Start(client);
+                    this.clientLastHeartbeat[client] = DateTime.Now; // Initialize the last heartbeat time
+                    ThreadPool.QueueUserWorkItem(HandleClient, client);
                 }
-                catch (Exception ex)
+                catch (SocketException)
                 {
-                    // Handle exception
-                    Console.WriteLine("Error accepting client: {0}", ex.Message);
-                    if (client != null) clients.Remove(client);
+                    // Handle potential errors gracefully
+                    break;
                 }
+            }
+        }
+
+        public void Stop()
+        {
+            isRunning = false;
+            this.listener.Stop();
+            this.heartbeatTimer.Dispose();
+            foreach (var client in clients)
+            {
+                client.Close();
             }
         }
 
@@ -165,17 +225,17 @@ namespace chatServer
                     break;
                 }
 
-
                 // Convert incoming message to string
                 string data = Encoding.ASCII.GetString(message, 0, bytesRead);
 
-                string logMessage = String.Format("[ MESSAGE | {0} ] Message from client: {1}", clientIP, data);
-                
-                // Skip heartbeat messages
                 if (data == "HEARTBEAT-REPLY")
                 {
+                    clientLastHeartbeat[tcpClient] = DateTime.Now; // Update the last heartbeat time
+                    Console.WriteLine($"[ HEARTBEAT REPLY RECEIVED | {((IPEndPoint)tcpClient.Client.RemoteEndPoint).Address.ToString()} ]");
                     continue;
                 }
+
+                string logMessage = String.Format("[ MESSAGE | {0} ] Message from client: {1}", clientIP, data);
 
                 // by any means this should be shown for security and privacy reasons.
                 Console.ForegroundColor = ConsoleColor.Blue;
@@ -195,6 +255,9 @@ namespace chatServer
                     connectedClientStream.Write(broadcastMessage, 0, broadcastMessage.Length);
                 }
             }
+
+            // Handle client disconnection
+            HandleClientDisconnection(tcpClient);
 
         }
     }
