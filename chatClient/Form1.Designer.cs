@@ -33,9 +33,9 @@
             IP_TextBox = new TextBox();
             Disconnect_Button = new Button();
             SendTestMsg_Button = new Button();
-            chatTextBox = new TextBox();
             getMsgs = new System.Windows.Forms.Timer(components);
             textBox1 = new TextBox();
+            chatTextBox = new RichTextBox();
             SuspendLayout();
             // 
             // button1
@@ -77,15 +77,6 @@
             SendTestMsg_Button.Visible = false;
             SendTestMsg_Button.Click += SendTestMsg_Button_Click;
             // 
-            // chatTextBox
-            // 
-            chatTextBox.Location = new Point(12, 56);
-            chatTextBox.Multiline = true;
-            chatTextBox.Name = "chatTextBox";
-            chatTextBox.Size = new Size(521, 226);
-            chatTextBox.TabIndex = 4;
-            chatTextBox.TextChanged += chatTextBox_TextChanged;
-            // 
             // getMsgs
             // 
             getMsgs.Interval = 10;
@@ -98,13 +89,21 @@
             textBox1.Size = new Size(292, 23);
             textBox1.TabIndex = 5;
             // 
+            // chatTextBox
+            // 
+            chatTextBox.Location = new Point(11, 50);
+            chatTextBox.Name = "chatTextBox";
+            chatTextBox.Size = new Size(522, 247);
+            chatTextBox.TabIndex = 6;
+            chatTextBox.Text = "";
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(545, 348);
-            Controls.Add(textBox1);
             Controls.Add(chatTextBox);
+            Controls.Add(textBox1);
             Controls.Add(SendTestMsg_Button);
             Controls.Add(Disconnect_Button);
             Controls.Add(IP_TextBox);
@@ -121,8 +120,8 @@
         private TextBox IP_TextBox;
         private Button Disconnect_Button;
         private Button SendTestMsg_Button;
-        private TextBox chatTextBox;
         private System.Windows.Forms.Timer getMsgs;
         private TextBox textBox1;
+        private RichTextBox chatTextBox;
     }
 }

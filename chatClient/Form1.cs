@@ -23,7 +23,7 @@ namespace chatClient
             try
             {
                 client = new TcpClient();
-                client.Connect(IP_TextBox.Text, 8000);
+                client.Connect(DecodeInvite(IP_TextBox.Text), 8000);
                 Disconnect_Button.Visible = true;
                 SendTestMsg_Button.Visible = true;
                 button1.Enabled = false;
@@ -31,11 +31,27 @@ namespace chatClient
                 connected = true;
                 getMsgs.Start();
                 chatTextBox.Text = string.Empty;
-                MessageBox.Show("Connection successful");
+                this.Invoke(new Action(() =>
+                {
+                    string formattedMessage = $"[{DateTime.Now:HH:mm:ss}] You connected to {IP_TextBox.Text}!";
+                    this.chatTextBox.SelectionStart = this.chatTextBox.TextLength;
+                    this.chatTextBox.SelectionLength = 0;
+                    this.chatTextBox.SelectionColor = Color.Green;
+                    this.chatTextBox.AppendText(formattedMessage + Environment.NewLine);
+                    this.chatTextBox.SelectionColor = this.chatTextBox.ForeColor;
+                }));
             }
             catch
             {
-                MessageBox.Show("Connection failed");
+                this.Invoke(new Action(() =>
+                {
+                    string formattedMessage = $"[{DateTime.Now:HH:mm:ss}] Can't connect to {IP_TextBox.Text} :c. Make sure the code is correct!";
+                    this.chatTextBox.SelectionStart = this.chatTextBox.TextLength;
+                    this.chatTextBox.SelectionLength = 0;
+                    this.chatTextBox.SelectionColor = Color.Red;
+                    this.chatTextBox.AppendText(formattedMessage + Environment.NewLine);
+                    this.chatTextBox.SelectionColor = this.chatTextBox.ForeColor;
+                }));
             }
         }
 
@@ -47,6 +63,15 @@ namespace chatClient
 
         private void Disconnect_Button_Click(object sender, EventArgs e)
         {
+            this.Invoke(new Action(() =>
+            {
+                string formattedMessage = $"[{DateTime.Now:HH:mm:ss}] You disconnected from the chat!";
+                this.chatTextBox.SelectionStart = this.chatTextBox.TextLength;
+                this.chatTextBox.SelectionLength = 0;
+                this.chatTextBox.SelectionColor = Color.Red;
+                this.chatTextBox.AppendText(formattedMessage + Environment.NewLine);
+                this.chatTextBox.SelectionColor = this.chatTextBox.ForeColor;
+            }));
             client.Close();
             Disconnect_Button.Visible = false;
             SendTestMsg_Button.Visible = false;
@@ -65,19 +90,24 @@ namespace chatClient
             }
         }
 
+        private string DecodeInvite(string code)
+        {
+            byte[] decodedBytes = Convert.FromBase64String(code);
+            return Encoding.UTF8.GetString(decodedBytes);
+        }
+
         private Color DetermineColor(string encodedIP)
         {
-            // Convert the encoded IP to a byte array
-            byte[] bytes = Encoding.ASCII.GetBytes(encodedIP);
+            string rHex = encodedIP.Substring(0, 2);
+            string gHex = encodedIP.Substring(2, 2);
+            string bHex = encodedIP.Substring(4, 2);
 
-            // Use the byte values to determine the RGB values
-            int r = Math.Abs(bytes[0] + bytes[1]) % 256;
-            int g = Math.Abs(bytes[2] + bytes[3]) % 256;
-            int b = Math.Abs(bytes[4] + bytes[5]) % 256;
+            int r = int.Parse(rHex,System.Globalization.NumberStyles.HexNumber);
+            int g = int.Parse(gHex,System.Globalization.NumberStyles.HexNumber);
+            int b = int.Parse(bHex,System.Globalization.NumberStyles.HexNumber);
 
             return Color.FromArgb(r, g, b);
         }
-
 
         private async Task HandleServerMessages(NetworkStream clientStream)
         {
@@ -108,6 +138,7 @@ namespace chatClient
                         string ip = match.Groups["ip"].Value;
                         string encodedIP = EncodeIP(ip);
                         Color userColor = DetermineColor(encodedIP);
+
                         string userMessage = Regex.Replace(data, @"\[ MESSAGE \| \d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3} \] Message from client: ", "");
 
                         this.Invoke(new Action(() =>
@@ -115,8 +146,9 @@ namespace chatClient
                             string formattedMessage = $"[{DateTime.Now:HH:mm:ss}] {encodedIP}: {userMessage}";
                             this.chatTextBox.SelectionStart = this.chatTextBox.TextLength;
                             this.chatTextBox.SelectionLength = 0;
-                            // this.chatTextBox.ForeColor = userColor;
+                            this.chatTextBox.SelectionColor = userColor;
                             this.chatTextBox.AppendText(formattedMessage + Environment.NewLine);
+                            this.chatTextBox.SelectionColor = this.chatTextBox.ForeColor;
                         }));
                     }
                 }

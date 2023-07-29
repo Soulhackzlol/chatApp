@@ -23,7 +23,6 @@ namespace chatServer
         private ConcurrentDictionary<TcpClient, DateTime> clientLastHeartbeat;
         private Timer heartbeatTimer;
         private bool isRunning = true;
-        private object lockObj = new object();
         private SemaphoreSlim heartbeatSemaphore = new SemaphoreSlim(1, 1);
 
         public Server()
@@ -35,6 +34,7 @@ namespace chatServer
             this.heartbeatTimer = new Timer(async state => await SafeSendHeartbeatAsync(), null, 0, 10000);
             this.StartListening();
         }
+
         private async Task SafeSendHeartbeatAsync()
         {
             if (await heartbeatSemaphore.WaitAsync(0))  // Try to acquire the semaphore without waiting
@@ -55,7 +55,6 @@ namespace chatServer
                 Console.WriteLine("[ WARNING ] Previous heartbeat still in progress.");
             }
         }
-
 
         private async Task SendHeartbeatAsync()
         {
@@ -155,13 +154,10 @@ namespace chatServer
             }
         }
 
-
-
-
         private void StartListening()
         {
             this.listener.Start();
-            Console.WriteLine("Chat Server started on port 8000");
+            Console.WriteLine($"Chat Server started on {createInvite(IPAddress.Any.ToString())} 8000");
             while (isRunning)
             {
                 try
@@ -188,6 +184,12 @@ namespace chatServer
             {
                 client.Close();
             }
+        }
+
+        private string createInvite(string ip)
+        {
+            byte[] ipBytes = Encoding.UTF8.GetBytes("192.168.3.68");
+            return Convert.ToBase64String(ipBytes);
         }
 
         private void HandleClient(object client)
